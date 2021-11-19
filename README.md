@@ -1,5 +1,6 @@
 # 3cc
 A command line interface to create/update 3commas bots along with some experimental settings
+
 Instructions:
 
 Create empty c# console project
