@@ -152,7 +152,7 @@ email_token (retrieve from your 3c account in custom TV start condition JSON - f
                     {
                         string[] qb = pair_.Split("_");
                         string pair = qb[1].Trim() + qb[0].Trim(); //get to binance candle format
-                                                                   //get 4 candles (current candle Date, Open,High,Low,Close,Volume and 3 candles back e.g. 11:58:00, 11:59:00, 12:00:00, 12:00:37)
+                        //get 4 candles (current candle Date, Open,High,Low,Close,Volume and 3 candles back e.g. 11:58:00, 11:59:00, 12:00:00, 12:00:37)
                         List<Quote> quotes = lib.GetCandles(pair, "1m", 4, "binance").ToList();
 
                         //get close differences into a dictionary for 3 minutes and change
