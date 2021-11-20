@@ -1,10 +1,11 @@
-﻿using System;
+using System;
 using XCommas.Net;
 using System.Linq;
 using XCommas.Net.Objects;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Skender.Stock.Indicators;
+using System.Collections.Concurrent;
 
 namespace _3cc
 {
@@ -25,7 +26,7 @@ email_token (retrieve from your 3c account in custom TV start condition JSON - f
             var accts = lib.api.GetAccountsAsync().GetAwaiter().GetResult().Data;
             foreach (var acct in accts) if (acct.MarketCode == lines[3]) lib.accountId = acct.Id;
 
-            bool experimenting = false;
+            bool experimenting = true;
             if (!experimenting)
             {
                 var opts = lib.GetOptions();
@@ -117,27 +118,114 @@ email_token (retrieve from your 3c account in custom TV start condition JSON - f
             }
             else
             {
-                List<Quote> quotes = lib.GetCandles("SHIBUSDT", "1m", 250, "binance").ToList();
-                List<Quote> quotes2 = null;
-                string currTime;
+                //List<Quote> quotes = lib.GetCandles("SHIBUSDT", "1m", 250, "binance").ToList();
+                //List<Quote> quotes2 = null;
+                //string currTime;
+                //while (true)
+                //{
+                //    //here I am updating existing quote record instead of getting all new records each time from binance api
+                //    //I am sure that maybe the same could be done for results call to reduce computation perhaps?
+                //    List<RsiResult> results = quotes.GetRsi(14).ToList();
+                //    int last = results.Count - 1;
+                //    currTime = results[last].Date.ToShortTimeString();
+                //    Console.WriteLine($"SHIBUSDT 1min RSI @ {currTime} UTC is {Decimal.Round((decimal)results[last].Rsi,8)}");
+                //    lib.Delay(10);
+                //    quotes2 = lib.GetCandles("SHIBUSDT", "1m", 1, "binance").ToList();
+                //    if (quotes2[0].Date.ToShortTimeString() == currTime)
+                //        quotes[quotes.Count - 1] = quotes2[0]; //replace the last quote with the updated quote
+                //    else
+                //    {
+                //        quotes.Add(quotes2[0]); //otherwise assume it's a new quote;
+                //        quotes.RemoveAt(0); //remove first record so the number of quotes stays constant
+                //    }
+                //}
+
+                //lib.bin_pairs are the pairs available in paper account
+                string[] pairs = lib.bin_pairs.Split(",");
+                HashSet<string> top3 = new HashSet<string>(), topX = new HashSet<string>(), top3prev = null, topXprev = null;
+                Dictionary<string, bool> top3new = null;
+                int idx = 0;
                 while (true)
                 {
-                    //here I am updating existing quote record instead of getting all new records each time from binance api
-                    //I am sure that maybe the same could be done for results call to reduce computation perhaps?
-                    List<RsiResult> results = quotes.GetRsi(14).ToList();
-                    int last = results.Count - 1;
-                    currTime = results[last].Date.ToShortTimeString();
-                    Console.WriteLine($"SHIBUSDT 1min RSI @ {currTime} UTC is {Decimal.Round((decimal)results[last].Rsi,8)}");
-                    lib.Delay(10);
-                    quotes2 = lib.GetCandles("SHIBUSDT", "1m", 1, "binance").ToList();
-                    if (quotes2[0].Date.ToShortTimeString() == currTime)
-                        quotes[quotes.Count - 1] = quotes2[0]; //replace the last quote with the updated quote
+                    ConcurrentDictionary<string, decimal> diff = new ConcurrentDictionary<string, decimal>();
+                    Parallel.ForEach(pairs, pair_ =>
+                    {
+                        string[] qb = pair_.Split("_");
+                        string pair = qb[1].Trim() + qb[0].Trim(); //get to binance candle format
+                                                                   //get 4 candles (current candle Date, Open,High,Low,Close,Volume and 3 candles back e.g. 11:58:00, 11:59:00, 12:00:00, 12:00:37)
+                        List<Quote> quotes = lib.GetCandles(pair, "1m", 4, "binance").ToList();
+
+                        //get close differences into a dictionary for 3 minutes and change
+                        decimal c0 = quotes[0].Close;
+                        decimal c = quotes[quotes.Count - 1].Close;
+                        diff.TryAdd(pair, 100 * (c - c0) / c);
+                        //Task.Delay(50).GetAwaiter().GetResult(); //can't call api too much
+                    });
+
+                    if (top3prev != null) top3prev.Clear();
+                    if (topXprev != null) topXprev.Clear();
+                    top3prev = new HashSet<string>(top3);
+                    topXprev = new HashSet<string>(topX);
+                    top3.Clear();
+                    topX.Clear();
+
+                    int cnt = 1;
+                    foreach (KeyValuePair<string, decimal> pair in diff.OrderByDescending(key => key.Value)) //Descending
+                    {
+                        //Console.WriteLine("Key: {0}, Value: {1}", author.Key, author.Value);
+                        if (cnt >= 1 && cnt <= 3) top3.Add(pair.Key);
+                        if (cnt >= 1 && cnt <= 10) topX.Add(pair.Key);
+                        cnt++;
+                        if (cnt > 10) break;
+                    }
+
+                    //the top 3 was in the top 10 previosly but is it still?
+                    if (top3new != null) top3new.Clear();
+                    top3new = new Dictionary<string, bool>();
+                    foreach(string pair in top3prev)
+                    {
+                        if (!topX.Contains(pair))
+                        {
+                            foreach (string newPair in top3)
+                            {
+                                if (!top3new.ContainsKey(newPair))
+                                {
+                                    top3new.Add(newPair, true);
+                                    break;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            top3new.Add(pair, false); //the same pair is in the top 10 (false is not new)
+                        }
+                    }
+
+                    
+
+                    if (idx > 0)
+                    {
+                        foreach (KeyValuePair<string, bool> pair in top3new)
+                        {
+                            Console.WriteLine($" pair: {pair.Key}, new: {pair.Value}, iteration: {idx}, time: {DateTime.Now.ToShortTimeString()}");
+                        }
+                        //update top3 with top3new
+                        top3.Clear();
+                        foreach (KeyValuePair<string, bool> pair in top3new) top3.Add(pair.Key);
+                    }
                     else
                     {
-                        quotes.Add(quotes2[0]); //otherwise assume it's a new quote;
-                        quotes.RemoveAt(0); //remove first record so the number of quotes stays constant
+                        foreach (string pair in top3)
+                        {
+                            Console.WriteLine($" pair: {pair} (first iteration), time: {DateTime.Now.ToShortTimeString()}");
+                        }
                     }
+                    Console.WriteLine("");
+                    idx++;
+                    lib.Delay(60); //wait a minute
                 }
+
+
             }
 
 
