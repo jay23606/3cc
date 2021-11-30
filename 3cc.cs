@@ -140,6 +140,8 @@ email_token (retrieve from your 3c account in custom TV start condition JSON - f
                 //    }
                 //}
 
+                
+
                 //lib.bin_pairs are the pairs available in paper account
                 string[] pairs = lib.bin_pairs.Split(",");
                 Dictionary<string, decimal> top3 = new Dictionary<string, decimal>(), topX = new Dictionary<string, decimal>(), top3prev = null, topXprev = null;
@@ -147,6 +149,9 @@ email_token (retrieve from your 3c account in custom TV start condition JSON - f
                 int idx = 0;
                 while (true)
                 {
+                    lib.Delay((1000 * (60 - DateTime.UtcNow.Second) + 1) - DateTime.UtcNow.Millisecond, 1); //synchronize the candles so we get "fresh" candles
+                    Console.WriteLine($"{DateTime.UtcNow.Second}sec and {DateTime.UtcNow.Millisecond}ms after {DateTime.UtcNow.ToShortTimeString()}");
+
                     System.Diagnostics.Stopwatch watch = System.Diagnostics.Stopwatch.StartNew();
                     ConcurrentDictionary<string, decimal> diff = new ConcurrentDictionary<string, decimal>();
                     Parallel.ForEach(pairs, pair_ =>
@@ -163,8 +168,8 @@ email_token (retrieve from your 3c account in custom TV start condition JSON - f
                         //Task.Delay(50).GetAwaiter().GetResult(); //can't call api too much
                     });
                     watch.Stop();
-                    long timeDiff = 60 * 1000 - watch.ElapsedMilliseconds;
-                    Console.WriteLine($"Execution Time: {watch.ElapsedMilliseconds} ms -- {timeDiff} ms from 60 seconds");
+                    //long timeDiff = 60 * 1000 - watch.ElapsedMilliseconds;
+                    Console.WriteLine($"Execution Time: {watch.ElapsedMilliseconds} ms");
 
                     if (top3prev != null) top3prev.Clear();
                     if (topXprev != null) topXprev.Clear();
@@ -226,7 +231,7 @@ email_token (retrieve from your 3c account in custom TV start condition JSON - f
 
                         foreach (KeyValuePair<string, decimal> pair in top3new)
                         {
-                            Console.WriteLine($" pair: {pair.Key}, %: {Decimal.Round(pair.Value, 8)} iteration: {idx + 1}, time: {DateTime.Now.ToShortTimeString()}");
+                            Console.WriteLine($" pair: {pair.Key}, %: {Decimal.Round(pair.Value, 8)} iteration: {idx + 1}, time: {DateTime.UtcNow.ToShortTimeString()}");
                         }
                         foreach (KeyValuePair<string, decimal> pair in top3prev)
                             if (!top3new.ContainsKey(pair.Key))
@@ -249,13 +254,13 @@ email_token (retrieve from your 3c account in custom TV start condition JSON - f
                     {
                         foreach (KeyValuePair<string, decimal> pair in top3)
                         {
-                            Console.WriteLine($" pair: {pair.Key} %: {Decimal.Round(pair.Value,8)} (first iteration), time: {DateTime.Now.ToShortTimeString()}");
+                            Console.WriteLine($" pair: {pair.Key} %: {Decimal.Round(pair.Value,8)} (first iteration), time: {DateTime.UtcNow.ToShortTimeString()}");
                             //lib.StartTVCustom(123456, "email token", "USDT_" + pair.Key.Replace("USDT", ""));
                         }
                     }
                     Console.WriteLine("");
                     idx++;
-                    if (timeDiff > 0) lib.Delay((int)timeDiff, 1); //wait a minute and check again
+                    //if (timeDiff > 0) lib.Delay((int)timeDiff, 1); //wait a minute and check again
                 }
             }
         } 
