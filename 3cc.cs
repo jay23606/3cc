@@ -215,8 +215,18 @@ email_token (retrieve from your 3c account in custom TV start condition JSON - f
                         {
                             Console.WriteLine($" pair: {pair.Key}, %: {Decimal.Round(pair.Value, 8)} iteration: {idx + 1}, time: {DateTime.Now.ToShortTimeString()}");
                         }
-                        foreach (KeyValuePair<string, decimal> pair in top3prev) if (!top3new.ContainsKey(pair.Key)) Console.WriteLine($"  *Remove {pair.Key}");
-                        foreach (KeyValuePair<string, decimal> pair in top3new) if (!top3prev.ContainsKey(pair.Key)) Console.WriteLine($"  *Add {pair.Key}");
+                        foreach (KeyValuePair<string, decimal> pair in top3prev)
+                            if (!top3new.ContainsKey(pair.Key))
+                            {
+                                Console.WriteLine($"  *Remove {pair.Key}");
+                                lib.SellTVCustom(123456, "email token", pair.Key);
+                            }
+                        foreach (KeyValuePair<string, decimal> pair in top3new)
+                            if (!top3prev.ContainsKey(pair.Key))
+                            {
+                                Console.WriteLine($"  *Add {pair.Key}");
+                                lib.StartTVCustom(123456, "email token", pair.Key);
+                            }
 
                         //update top3 with top3new
                         top3.Clear();
@@ -227,6 +237,7 @@ email_token (retrieve from your 3c account in custom TV start condition JSON - f
                         foreach (KeyValuePair<string, decimal> pair in top3)
                         {
                             Console.WriteLine($" pair: {pair.Key} %: {Decimal.Round(pair.Value,8)} (first iteration), time: {DateTime.Now.ToShortTimeString()}");
+                            lib.StartTVCustom(123456, "email token", pair.Key);
                         }
                     }
                     Console.WriteLine("");
