@@ -142,8 +142,8 @@ email_token (retrieve from your 3c account in custom TV start condition JSON - f
 
                 //lib.bin_pairs are the pairs available in paper account
                 string[] pairs = lib.bin_pairs.Split(",");
-                HashSet<string> top3 = new HashSet<string>(), topX = new HashSet<string>(), top3prev = null, topXprev = null;
-                Dictionary<string, bool> top3new = null;
+                Dictionary<string, decimal> top3 = new Dictionary<string, decimal>(), topX = new Dictionary<string, decimal>(), top3prev = null, topXprev = null;
+                Dictionary<string, decimal> top3new = null;
                 int idx = 0;
                 while (true)
                 {
@@ -152,77 +152,86 @@ email_token (retrieve from your 3c account in custom TV start condition JSON - f
                     {
                         string[] qb = pair_.Split("_");
                         string pair = qb[1].Trim() + qb[0].Trim(); //get to binance candle format
-                        //get 4 candles (current candle Date, Open,High,Low,Close,Volume and 3 candles back e.g. 11:58:00, 11:59:00, 12:00:00, 12:00:37)
+                                                                   //get 4 candles (current candle Date, Open,High,Low,Close,Volume and 3 candles back e.g. 11:58:00, 11:59:00, 12:00:00, 12:00:37)
                         List<Quote> quotes = lib.GetCandles(pair, "1m", 4, "binance").ToList();
 
                         //get close differences into a dictionary for 3 minutes and change
                         decimal c0 = quotes[0].Close;
-                        decimal c = quotes[quotes.Count - 1].Close;
+                        decimal c = quotes[quotes.Count - 2].Close;
                         diff.TryAdd(pair, 100 * (c - c0) / c);
                         //Task.Delay(50).GetAwaiter().GetResult(); //can't call api too much
                     });
 
                     if (top3prev != null) top3prev.Clear();
                     if (topXprev != null) topXprev.Clear();
-                    top3prev = new HashSet<string>(top3);
-                    topXprev = new HashSet<string>(topX);
+                    top3prev = new Dictionary<string, decimal>(top3);
+                    topXprev = new Dictionary<string, decimal>(topX);
                     top3.Clear();
                     topX.Clear();
 
-                    int cnt = 1;
+                    int topNum = diff.Count / 10; //lets say they must remain in top 10% (this would be 27 rather than top 10--less churn)
+
+                    //int cnt = 1;
                     foreach (KeyValuePair<string, decimal> pair in diff.OrderByDescending(key => key.Value)) //Descending
                     {
                         //Console.WriteLine("Key: {0}, Value: {1}", author.Key, author.Value);
-                        if (cnt >= 1 && cnt <= 3) top3.Add(pair.Key);
-                        if (cnt >= 1 && cnt <= 10) topX.Add(pair.Key);
-                        cnt++;
-                        if (cnt > 10) break;
+                        if (top3.Count < 3) top3.Add(pair.Key, pair.Value);
+                        if (topX.Count < topNum) topX.Add(pair.Key, pair.Value);
+                        //cnt++;
+                        if (topX.Count >= topNum) break;
                     }
 
-                    //the top 3 was in the top 10 previosly but is it still?
+                    //the top 3 was in the top 10 previously but is it still?
                     if (top3new != null) top3new.Clear();
-                    top3new = new Dictionary<string, bool>();
-                    foreach(string pair in top3prev)
-                    {
-                        if (!topX.Contains(pair))
+                    else top3new = new Dictionary<string, decimal>();
+
+                    //do
+                    //{
+                        foreach (KeyValuePair<string, decimal> pair in top3prev)
                         {
-                            foreach (string newPair in top3)
+                            if (!topX.ContainsKey(pair.Key)) //is the prev top3 pair not in the current topX?
                             {
-                                if (!top3new.ContainsKey(newPair))
+                                foreach (KeyValuePair<string, decimal> newPair in top3) //find a new top3 replacement
                                 {
-                                    top3new.Add(newPair, true);
-                                    break;
+                                    if (!top3new.ContainsKey(newPair.Key))
+                                    {
+                                        top3new.Add(newPair.Key, newPair.Value);
+                                        break;
+                                    }
                                 }
                             }
+                            else //otherwise keep the previous top3 pair
+                            {
+                                if (!top3new.ContainsKey(pair.Key)) top3new.Add(pair.Key, topX[pair.Key]); //add the same pair with it's new value
+                            }
                         }
-                        else
-                        {
-                            top3new.Add(pair, false); //the same pair is in the top 10 (false is not new)
-                        }
-                    }
+                    //} while (top3new.Count < 3); //why the hell is it not 3?
 
                     
 
                     if (idx > 0)
                     {
-                        foreach (KeyValuePair<string, bool> pair in top3new)
+                        foreach (KeyValuePair<string, decimal> pair in top3new)
                         {
-                            Console.WriteLine($" pair: {pair.Key}, new: {pair.Value}, iteration: {idx}, time: {DateTime.Now.ToShortTimeString()}");
+                            Console.WriteLine($" pair: {pair.Key}, %: {Decimal.Round(pair.Value, 8)} iteration: {idx + 1}, time: {DateTime.Now.ToShortTimeString()}");
                         }
+                        foreach (KeyValuePair<string, decimal> pair in top3prev) if (!top3new.ContainsKey(pair.Key)) Console.WriteLine($"  *Remove {pair.Key}");
+                        foreach (KeyValuePair<string, decimal> pair in top3new) if (!top3prev.ContainsKey(pair.Key)) Console.WriteLine($"  *Add {pair.Key}");
+
                         //update top3 with top3new
                         top3.Clear();
-                        foreach (KeyValuePair<string, bool> pair in top3new) top3.Add(pair.Key);
+                        foreach (KeyValuePair<string, decimal> pair in top3new) top3.Add(pair.Key, pair.Value);
                     }
                     else
                     {
-                        foreach (string pair in top3)
+                        foreach (KeyValuePair<string, decimal> pair in top3)
                         {
-                            Console.WriteLine($" pair: {pair} (first iteration), time: {DateTime.Now.ToShortTimeString()}");
+                            Console.WriteLine($" pair: {pair.Key} %: {Decimal.Round(pair.Value,8)} (first iteration), time: {DateTime.Now.ToShortTimeString()}");
                         }
                     }
                     Console.WriteLine("");
                     idx++;
-                    lib.Delay(60); //wait a minute
+                    lib.Delay(60); //wait a minute and check again
                 }
 
 
