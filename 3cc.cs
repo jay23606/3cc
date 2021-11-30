@@ -147,6 +147,7 @@ email_token (retrieve from your 3c account in custom TV start condition JSON - f
                 int idx = 0;
                 while (true)
                 {
+                    System.Diagnostics.Stopwatch watch = System.Diagnostics.Stopwatch.StartNew();
                     ConcurrentDictionary<string, decimal> diff = new ConcurrentDictionary<string, decimal>();
                     Parallel.ForEach(pairs, pair_ =>
                     {
@@ -161,6 +162,9 @@ email_token (retrieve from your 3c account in custom TV start condition JSON - f
                         diff.TryAdd(pair, 100 * (c - c0) / c);
                         //Task.Delay(50).GetAwaiter().GetResult(); //can't call api too much
                     });
+                    watch.Stop();
+                    long timeDiff = 60 * 1000 - watch.ElapsedMilliseconds;
+                    Console.WriteLine($"Execution Time: {watch.ElapsedMilliseconds} ms -- {timeDiff} ms from 60 seconds");
 
                     if (top3prev != null) top3prev.Clear();
                     if (topXprev != null) topXprev.Clear();
@@ -184,14 +188,14 @@ email_token (retrieve from your 3c account in custom TV start condition JSON - f
                     //the top 3 was in the top 10 previously but is it still?
                     if (top3new != null) top3new.Clear();
                     else top3new = new Dictionary<string, decimal>();
-
-                    //do
-                    //{
+                    
+                    if (idx > 0)
+                    {
                         foreach (KeyValuePair<string, decimal> pair in top3prev)
                         {
                             if (!topX.ContainsKey(pair.Key)) //is the prev top3 pair not in the current topX?
                             {
-                                foreach (KeyValuePair<string, decimal> newPair in top3) //find a new top3 replacement
+                                foreach (KeyValuePair<string, decimal> newPair in topX.OrderByDescending(key => key.Value)) //find a new top3 replacement
                                 {
                                     if (!top3new.ContainsKey(newPair.Key))
                                     {
@@ -205,12 +209,21 @@ email_token (retrieve from your 3c account in custom TV start condition JSON - f
                                 if (!top3new.ContainsKey(pair.Key)) top3new.Add(pair.Key, topX[pair.Key]); //add the same pair with it's new value
                             }
                         }
-                    //} while (top3new.Count < 3); //why the hell is it not 3?
+                        int cntToFill = 3 - top3new.Count;
 
-                    
+                        while (cntToFill > 0)
+                        {
+                            foreach (KeyValuePair<string, decimal> newPair in topX.OrderByDescending(key => key.Value)) //find a new top3 replacement
+                            {
+                                if (!top3new.ContainsKey(newPair.Key))
+                                {
+                                    top3new.Add(newPair.Key, newPair.Value);
+                                    break;
+                                }
+                            }
+                            cntToFill--;
+                        }
 
-                    if (idx > 0)
-                    {
                         foreach (KeyValuePair<string, decimal> pair in top3new)
                         {
                             Console.WriteLine($" pair: {pair.Key}, %: {Decimal.Round(pair.Value, 8)} iteration: {idx + 1}, time: {DateTime.Now.ToShortTimeString()}");
@@ -219,13 +232,13 @@ email_token (retrieve from your 3c account in custom TV start condition JSON - f
                             if (!top3new.ContainsKey(pair.Key))
                             {
                                 Console.WriteLine($"  *Remove {pair.Key}");
-                                lib.SellTVCustom(123456, "email token", "USDT_"+pair.Key.Replace("USDT",""));
+                                //lib.SellTVCustom(123456, "email token", "USDT_" + pair.Key.Replace("USDT",""));
                             }
                         foreach (KeyValuePair<string, decimal> pair in top3new)
                             if (!top3prev.ContainsKey(pair.Key))
                             {
                                 Console.WriteLine($"  *Add {pair.Key}");
-                                lib.StartTVCustom(123456, "email token", "USDT_"+pair.Key.Replace("USDT",""));
+                                //lib.StartTVCustom(123456, "email token", "USDT_" + pair.Key.Replace("USDT", ""));
                             }
 
                         //update top3 with top3new
@@ -237,20 +250,14 @@ email_token (retrieve from your 3c account in custom TV start condition JSON - f
                         foreach (KeyValuePair<string, decimal> pair in top3)
                         {
                             Console.WriteLine($" pair: {pair.Key} %: {Decimal.Round(pair.Value,8)} (first iteration), time: {DateTime.Now.ToShortTimeString()}");
-                            lib.StartTVCustom(123456, "email token", "USDT_"+pair.Key.Replace("USDT",""));
+                            //lib.StartTVCustom(123456, "email token", "USDT_" + pair.Key.Replace("USDT", ""));
                         }
                     }
                     Console.WriteLine("");
                     idx++;
-                    lib.Delay(60); //wait a minute and check again
+                    if (timeDiff > 0) lib.Delay((int)timeDiff, 1); //wait a minute and check again
                 }
-
-
             }
-
-
-
-
         } 
     } 
 }
